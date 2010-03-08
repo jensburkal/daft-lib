@@ -9,6 +9,7 @@ import com.daftsolutions.lib.ws.dam.DamFieldValue;
 import com.daftsolutions.lib.ws.dam.DamPreview;
 import com.daftsolutions.lib.ws.dam.DamRecord;
 import com.daftsolutions.lib.ws.dam.DamRecordCollection;
+import com.daftsolutions.lib.ws.dam.DamRecordLock;
 import com.daftsolutions.lib.ws.dam.DamResultStatus;
 import com.daftsolutions.lib.ws.dam.DamUser;
 import com.daftsolutions.lib.ws.dam.DamUserComment;
@@ -178,11 +179,6 @@ public class DaftDamBean extends DamBean {
     }
 
     @Override
-    public byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId) {
-        throw new UnsupportedOperationException("Not supported yet.");
-    }
-
-    @Override
     public byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId, File dir) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
@@ -218,32 +214,32 @@ public class DaftDamBean extends DamBean {
     }
 
     @Override
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height) {
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height, int rotateQuadrant) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile) {
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, String format, int compressionLevel) {
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int rotateQuadrant, String format, int compressionLevel) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, String format, File cacheFile) {
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int rotateQuadrant, String format, File cacheFile) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile) {
+    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile, boolean returnData) {
+    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile, boolean returnData) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -253,7 +249,7 @@ public class DaftDamBean extends DamBean {
     }
 
     @Override
-    public byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile) {
+    public byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -274,6 +270,36 @@ public class DaftDamBean extends DamBean {
 
     @Override
     public DamFieldValue createFieldValue(DamFieldDescriptor fieldDescriptor, String value) throws Exception {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public boolean makeAssetVariant(Integer parentId, Integer recordId) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile, boolean returnData) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public DamRecord createAssetVariant(DamConnectionInfo connection, int parentId, DamAsset asset, String assetHandlingSet) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public DamRecordLock lockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public DamRecordLock unlockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 

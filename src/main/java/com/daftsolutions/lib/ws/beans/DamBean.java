@@ -14,6 +14,7 @@ import com.daftsolutions.lib.ws.dam.DamFieldValue;
 import com.daftsolutions.lib.ws.dam.DamPreview;
 import com.daftsolutions.lib.ws.dam.DamRecord;
 import com.daftsolutions.lib.ws.dam.DamRecordCollection;
+import com.daftsolutions.lib.ws.dam.DamRecordLock;
 import com.daftsolutions.lib.ws.dam.DamResultStatus;
 import com.daftsolutions.lib.ws.dam.DamUser;
 import com.daftsolutions.lib.ws.dam.DamUserComment;
@@ -28,7 +29,7 @@ import java.util.Properties;
  */
 public abstract class DamBean {
 
-    public final static String VERSION_NUMBER = "3.6.1";
+    public final static String VERSION_NUMBER = "3.7";
     // constants
     public final static String TEMP_DIR = "temp-dir";
     public final static String ENABLE_CACHE = "enable-cache";
@@ -297,6 +298,36 @@ public abstract class DamBean {
     /**
      *
      * @param connection
+     * @param parentId
+     * @param asset
+     * @param assetHandlingSet
+     * @return
+     */
+    public abstract DamRecord createAssetVariant(DamConnectionInfo connection, int parentId, DamAsset asset, String assetHandlingSet);
+
+    /**
+     * 
+     * @param connection
+     * @param id
+     * @param userName
+     * @param doLog
+     * @return
+     */
+   public abstract DamRecordLock lockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog);
+
+    /**
+     *
+     * @param connection
+     * @param id
+     * @param userName
+     * @param doLog
+     * @return
+     */
+   public abstract DamRecordLock unlockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog);
+
+    /**
+     *
+     * @param connection
      * @param path
      * @return
      */
@@ -357,21 +388,13 @@ public abstract class DamBean {
     public abstract DamAsset downloadAsset(DamConnectionInfo connection, int id);
 
     /**
-     * Preview an asset at full size using the Cumulus Pixel Image Converter, used the temp directory
+     * Preview an asset at full size using the Cumulus Pixel Image Converter, uses a specified directory (e.g. temp or crache)
      * @param connection catalog name username and password for connection to the DAM system
      * @param recordId
+     * @param cacheFile
      * @return
      */
-    public abstract byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId);
-
-    /**
-     * Preview an asset at full size using the Cumulus Pixel Image Converter, uses a specified directory (e.g. temp or cache)
-     * @param connection catalog name username and password for connection to the DAM system
-     * @param recordId
-     * @param dir
-     * @return
-     */
-    public abstract byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId, File dir);
+    public abstract byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId, File cacheFile);
 
     /**
      * Return the full asset as a byte array
@@ -430,9 +453,13 @@ public abstract class DamBean {
      * @param previewFieldDescriptor the Record field that is to be used to store the previews
      * @param previewName name of the preview to retrieve - can be either the name, or name and size (e.g. 'small' or 'small:72' - if the size is included
      * then it can be used to generate the preview if it s missing.
+     * @param compressionLevel
+     * @param width
+     * @param height
+     * @param rotateQuadrant 
      * @return
      */
-    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height);
+    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height, int rotateQuadrant);
 
     /**
      * Retrieve a preview for an asset by the preview name. The previews are stored in a Record Table field, with name and picture columns
@@ -440,6 +467,11 @@ public abstract class DamBean {
      * @param connection catalog name username and password for connection to the DAM system
      * @param previewFieldDescriptor the Record field that is to be used to store the previews
      * @param previewName name of the preview to retrieve - can be either the name, or name and size (e.g. 'small' or 'small:72' - if the size is included
+     * @param top
+     * @param left
+     * @param width
+     * @param height
+     * @param rotateQuadrant 
      * @param cacheFile file to store preview in a cache, if not specified, temp file will be created
      * then it can be used to generate the preview if it s missing.
      *
@@ -448,7 +480,7 @@ public abstract class DamBean {
      *
      * @return
      */
-    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile);
+    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile);
 
     /**
      * Retrieve a preview for an asset by the preview name. The previews are stored in a Record Table field, with name and picture columns
@@ -457,9 +489,10 @@ public abstract class DamBean {
      * @param previewFieldDescriptor the Record field that is to be used to store the previews
      * @param previewName name of the preview to retrieve - can be either the name, or name and size (e.g. 'small' or 'small:72' - if the size is included
      * then it can be used to generate the preview if it s missing.
+     * @param rotateQuadrant 
      * @return
      */
-    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, String format, int compressionLevel);
+    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int rotateQuadrant, String format, int compressionLevel);
 
     /**
      * Retrieve a preview for an asset by the preview name. The previews are stored in a Record Table field, with name and picture columns
@@ -471,7 +504,33 @@ public abstract class DamBean {
      * then it can be used to generate the preview if it s missing.
      * @return
      */
-    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, String format, File cacheFile);
+    public abstract byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int rotateQuadrant, String format, File cacheFile);
+
+    /**
+     *
+     * @param connection
+     * @param recordId
+     * @param previewName
+     * @param compressionLevel
+     * @param quadrant
+     * @param format
+     * @param cacheFile
+     * @return
+     */
+    public abstract byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile);
+
+    /**
+     *
+     * @param connection
+     * @param recordId
+     * @param previewName
+     * @param compressionLevel
+     * @param quadrant
+     * @param format
+     * @param cacheFile
+     * @return
+     */
+    public abstract byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile, boolean returnData);
 
     /**
      *
@@ -484,7 +543,7 @@ public abstract class DamBean {
      * @param cacheFile
      * @return
      */
-    public abstract byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile);
+    public abstract byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile);
 
     /**
      *
@@ -497,7 +556,7 @@ public abstract class DamBean {
      * @param cacheFile
      * @return
      */
-    public abstract byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile, boolean returnData);
+    public abstract byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile, boolean returnData);
 
     /**
      * Build a preview using a CumulusPreview object
@@ -521,7 +580,7 @@ public abstract class DamBean {
      * @param returnData
      * @return
      */
-    public abstract byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile);
+    public abstract byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile);
 
     /**
      *
@@ -561,7 +620,7 @@ public abstract class DamBean {
      */
     public abstract Object getFieldValue(DamFieldValue v, boolean json);
 
-        /**
+    /**
      * Sets values from a string value, e.g. from a html form input field or JSON
      *
      * @param fieldDescriptor
@@ -570,4 +629,11 @@ public abstract class DamBean {
      */
     public abstract DamFieldValue createFieldValue(DamFieldDescriptor fieldDescriptor, String value) throws Exception;
 
+    /**
+     *
+     * @param parentId
+     * @param recordId
+     * @return
+     */
+    public abstract boolean makeAssetVariant(Integer parentId, Integer recordId);
 }

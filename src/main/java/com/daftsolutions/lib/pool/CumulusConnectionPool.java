@@ -15,7 +15,6 @@ import com.canto.cumulus.constants.CombineMode;
 import com.canto.cumulus.constants.FindFlag;
 import com.canto.cumulus.exceptions.QueryParserException;
 import com.daftsolutions.lib.utils.CumulusUtilities;
-import com.daftsolutions.lib.utils.Utilities;
 import com.daftsolutions.lib.ws.dam.DamConnectionInfo;
 import java.util.Calendar;
 import java.util.EnumSet;
@@ -112,8 +111,12 @@ public class CumulusConnectionPool {
             masterServer = Server.openConnection(!connection.readOnly, connection.host, connection.username, connection.password);
             enterpriseServer = CumulusUtilities.isCumulusEnterpriseServer(masterServer);
             if (enterpriseServer) {
+                logger.info("Cumulus Enterprise Server detected.");
                 // master server should be read only to support unlimited reads
                 masterServer = Server.openConnection(false, connection.host, connection.username, connection.password);
+            } else {
+                logger.info("Cumulus Workflow Server assumed.");
+
             }
             this.connection.id = masterServer.findCatalogID(connection.catalogName);
             masterCatalog = masterServer.openCatalog(this.connection.id);
@@ -221,10 +224,10 @@ public class CumulusConnectionPool {
      */
     public ItemCollection cloneObjectToRead(Class collectionClass) {
         ItemCollection result = null;
-            if (collectionClass == RecordItemCollection.class) {
-                result = masterRecordCollection.clone();
-            } else if (collectionClass == CategoryItemCollection.class) {
-                result = masterCategoryCollection.clone();
+        if (collectionClass == RecordItemCollection.class) {
+            result = masterRecordCollection.clone();
+        } else if (collectionClass == CategoryItemCollection.class) {
+            result = masterCategoryCollection.clone();
         }
         return result;
     }

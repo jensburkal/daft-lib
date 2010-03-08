@@ -5,11 +5,6 @@
 package com.daftsolutions.lib.utils;
 
 import com.daftsolutions.lib.ws.dam.DamAsset;
-import com.daftsolutions.lib.ws.dam.DamFieldDescriptor;
-import com.daftsolutions.lib.ws.dam.DamFieldValue;
-import com.daftsolutions.lib.ws.dam.DamLabelValue;
-import com.daftsolutions.lib.ws.dam.DamStringListValue;
-import com.daftsolutions.lib.ws.dam.DamTableValue;
 import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
@@ -22,12 +17,8 @@ import java.lang.reflect.Array;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import org.apache.log4j.Logger;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 /**
  *
@@ -37,6 +28,8 @@ public class Utilities {
 
     private static Logger logger = Logger.getLogger(Utilities.class);
     public final static int BUFFER_SIZE = 1024;
+
+    public final static double DEGREES_FACTOR = Math.PI / 180.0;
 
     /**
      *
@@ -182,9 +175,24 @@ public class Utilities {
         return new String(buf);
     }
 
+    /**
+     *
+     * @param url
+     * @return
+     * @throws Exception
+     */
     public static String cloakUrl(String url) throws Exception {
         MessageDigest digest = java.security.MessageDigest.getInstance("MD5");
         digest.update(url.getBytes());
         return asHex(digest.digest());
+    }
+
+    /**
+     * 
+     * @param degrees
+     * @return
+     */
+    public static double degreesToRadians(int degrees) {
+        return new Double(degrees) * DEGREES_FACTOR;
     }
 }

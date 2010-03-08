@@ -14,7 +14,7 @@ import java.io.FilenameFilter;
  */
 public class PreviewCacheManager {
 
-    private File cacheDir = null;
+    protected File cacheDir = null;
 
     public PreviewCacheManager(File cacheDir) {
         this.cacheDir = cacheDir;
@@ -98,7 +98,7 @@ public class PreviewCacheManager {
 
     }
 
-    private String makePartitionName(String recordId) {
+    protected String makePartitionName(String recordId) {
         String result = null;
         // The cache file will be stored in the cache at location "catalogName/fieldId//id[0..1]/id/previewName
         // make sure previewName does not contain a size (e.g. small:50)
@@ -116,7 +116,7 @@ public class PreviewCacheManager {
         return result;
     }
 
-    private class IdFilenameFilter implements FilenameFilter {
+    protected class IdFilenameFilter implements FilenameFilter {
 
         private String id;
 

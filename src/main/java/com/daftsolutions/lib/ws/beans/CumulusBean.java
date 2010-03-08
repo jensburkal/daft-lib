@@ -22,9 +22,11 @@ import com.canto.cumulus.Server;
 import com.canto.cumulus.constants.CatalogingFlag;
 import com.canto.cumulus.events.CatalogingEventObject;
 import com.canto.cumulus.events.CatalogingListener;
+import com.canto.cumulus.exceptions.FieldNotFoundException;
 import com.canto.cumulus.exceptions.LoginFailedException;
 import com.canto.cumulus.exceptions.QueryParserException;
 import com.canto.cumulus.fieldvalue.AssetReference;
+import com.canto.cumulus.fieldvalue.AssetXRefFieldValue;
 import com.canto.cumulus.fieldvalue.CategoriesFieldValue;
 import com.canto.cumulus.fieldvalue.LabelFieldValue;
 import com.canto.cumulus.fieldvalue.StringEnumFieldValue;
@@ -35,6 +37,7 @@ import com.canto.cumulus.usermanagement.UserFieldDefinition;
 import com.canto.cumulus.utils.ImagingPixmap;
 import com.canto.cumulus.utils.LanguageManager;
 import com.canto.cumulus.utils.PlatformUtils;
+import com.daftsolutions.lib.log.EventLogger;
 import com.daftsolutions.lib.pool.CumulusConnectionPool;
 import com.daftsolutions.lib.pool.RecordResultSet;
 import com.daftsolutions.lib.utils.CumulusUtilities;
@@ -48,6 +51,7 @@ import com.daftsolutions.lib.ws.dam.DamFieldValue;
 import com.daftsolutions.lib.ws.dam.DamLabelValue;
 import com.daftsolutions.lib.ws.dam.DamPreview;
 import com.daftsolutions.lib.ws.dam.DamRecord;
+import com.daftsolutions.lib.ws.dam.DamRecordLock;
 import com.daftsolutions.lib.ws.dam.DamResultStatus;
 import com.daftsolutions.lib.ws.dam.DamStringListValue;
 import com.daftsolutions.lib.ws.dam.DamTableItemValue;
@@ -62,6 +66,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -85,11 +90,21 @@ public class CumulusBean extends DamBean {
     public final static String CUMULUS_DEFAULT_PASSWORD = "cumulus-default-password";
     public final static String CUMULUS_ASSET_HANDLING_SET = "cumulus-asset-handling-set";
     public final static String CUMULUS_ASSET_ACTION = "cumulus-asset-action";
+    public final static GUID UID_REC_DAFT_LOCKED = new GUID("{8CB03453-1376-4DA3-BAF1-BBBF230735F9}");
+    public final static String FIELD_DAFT_LOCKED_NAME = "daft-locked";
+    public final static GUID UID_REC_DAFT_LOCKED_BY = new GUID("{7D38F904-E866-4655-8D52-CC5B8ABB8597}");
+    public final static GUID UID_REC_DAFT_LOCKED_TIME = new GUID("{D8BB0B6E-A51A-486A-BD4C-C01C2FB5C865}");
+    public final static GUID UID_REC_DAFT_LOCKED_LABEL = new GUID("{F621CB44-0A6C-4CFD-AE31-067DBC7177E2}");
+
+    public final static String LOG_MESSAGE_ASSET_LOCKED = "Asset Locked";
+    public final static String LOG_MESSAGE_ASSET_UNLOCKED = "Asset Unlocked";
+
     // various stuff
     private Server cumulusServer = null;
     private Map<String, Catalog> catalogs = null;
     private Map<String, CumulusConnectionPool> connectionPools = null; // key is "catalogName:username" - e.g. "ImageBank:colin"
     private HashMap<String, DamUser> users = null;
+    private EventLogger eventLogger = new EventLogger();
 
     /**
      *
@@ -857,39 +872,46 @@ public class CumulusBean extends DamBean {
                     tempFile = new File(tempDir, assets[i].name);
                     FileOutputStream os = new FileOutputStream(tempFile);
                     os.write(assets[i].data);
+                    os.flush();
                     os.close();
                     Asset asset = new Asset(recordCollection.getCumulusSession(), tempFile);
                     recordCollection.catalogAsset(asset, assetHandlingSet, null, EnumSet.noneOf(CatalogingFlag.class), (CatalogingListener<ItemCollection>) catalogingListener);
                     result[i].id = catalogingListener.getItemId();
-                    recordCollection.addItemByID(result[i].id); // to be sure in case asset handling set prevents this
-                    boolean doSave = false;
-                    recordItem = recordCollection.getRecordItemByID(result[i].id);
-                    if (fieldDescriptors != null && fieldValues != null && fieldDescriptors.length == fieldValues.length) {
-                        // update fields
-                        Locale loc = null;
-                        if (locale != null) {
-                            loc = getLocale(locale);
-                        } else {
-                            loc = Locale.getDefault();
+                    if (result[i].id != -1) {
+                        recordCollection.addItemByID(result[i].id); // to be sure in case asset handling set prevents this
+                        boolean doSave = false;
+                        recordItem = recordCollection.getRecordItemByID(result[i].id);
+                        if (fieldDescriptors != null && fieldValues != null && fieldDescriptors.length == fieldValues.length) {
+                            // update fields
+                            Locale loc = null;
+                            if (locale != null) {
+                                loc = getLocale(locale);
+                            } else {
+                                loc = Locale.getDefault();
+                            }
+                            for (int f = 0; f < fieldDescriptors.length; f++) {
+                                GUID guid = new GUID(fieldDescriptors[f].guid);
+                                setFieldValue(recordItem, guid, fieldValues[f], layout, loc);
+                            }
+                            doSave = true;
                         }
-                        for (int f = 0; f < fieldDescriptors.length; f++) {
-                            GUID guid = new GUID(fieldDescriptors[f].guid);
-                            setFieldValue(recordItem, guid, fieldValues[f], layout, loc);
+                        if (categories != null && categories.length > 0) {
+                            AllCategoriesItemCollection allCategoriesItemCollection = thePool.getAllCategoriesItemCollection(true);
+                            rootCategory = allCategoriesItemCollection.getCategoryTreeCatalogRootCategory();
+                            CategoryItem parentCategory = rootCategory;
+                            processCategories(recordItem, parentCategory, allCategoriesItemCollection, categories);
+                            doSave = true;
                         }
-                        doSave = true;
+                        if (doSave) {
+                            recordItem.save();
+                        }
+                        logger.info("catalog asset: " + tempFile.getName() + " done with record id: " + result[i].id);
+                    } else {
+                        logger.info("failed to catalog asset: " + tempFile.getName() + " to Cumulus");
                     }
-                    if (categories != null && categories.length > 0) {
-                        AllCategoriesItemCollection allCategoriesItemCollection = thePool.getAllCategoriesItemCollection(true);
-                        rootCategory = allCategoriesItemCollection.getCategoryTreeCatalogRootCategory();
-                        CategoryItem parentCategory = rootCategory;
-                        processCategories(recordItem, parentCategory, allCategoriesItemCollection, categories);
-                        doSave = true;
-                    }
-                    if (doSave) {
-                        recordItem.save();
-                    }
-                    logger.info("catalog asset: " + tempFile.getName() + " done with record id: " + result[i].id);
                 }
+            } else {
+                logger.info("failed to get record collection to write - check your connection pool configuration");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -898,6 +920,67 @@ public class CumulusBean extends DamBean {
                 tempFile.delete();
             }
             thePool.returnWriteObject(recordCollection);
+        }
+        return result;
+    }
+
+    /**
+     *
+     * @param connection
+     * @param parentId
+     * @param asset
+     * @return
+     */
+    public DamRecord createAssetVariant(DamConnectionInfo connection, int parentId, DamAsset asset, String assetHandlingSet) {
+        DamRecord result = null;
+        CumulusConnectionPool thePool = null;
+        RecordItemCollection recordCollection = null;
+        RecordItem recordItem = null;
+        File tempFile = null;
+        try {
+            thePool = getPool(connection);
+            recordCollection = (RecordItemCollection) thePool.borrowObjectToWrite(RecordItemCollection.class);
+            if (recordCollection != null) {
+                Layout layout = recordCollection.getLayout();
+                WsCatalogingListener catalogingListener = new WsCatalogingListener();
+                recordCollection.addCatalogingListener((CatalogingListener<ItemCollection>) catalogingListener);
+                result = new DamRecord();
+                if (!tempDir.exists()) {
+                    tempDir.mkdirs();
+                }
+                tempFile = new File(tempDir, asset.name);
+                FileOutputStream os = new FileOutputStream(tempFile);
+                os.write(asset.data);
+                os.flush();
+                os.close();
+                Asset tempAsset = new Asset(recordCollection.getCumulusSession(), tempFile);
+                recordCollection.catalogAsset(tempAsset, assetHandlingSet, null, EnumSet.noneOf(CatalogingFlag.class), (CatalogingListener<ItemCollection>) catalogingListener);
+                result.id = catalogingListener.getItemId();
+                if (result.id != -1) {
+                    recordCollection.addItemByID(result.id); // to be sure in case asset handling set prevents this
+                    recordItem = recordCollection.getRecordItemByID(result.id);
+                    logger.debug(" new record id is: " + result.id + " parent id is: " + parentId);
+                    if (parentId > 0) {
+                        RecordItem parentRecord = recordCollection.getRecordItemByID(parentId);
+                        try {
+                            AssetXRefFieldValue xrefField = parentRecord.getAssetXRefValue(GUID.UID_REC_RELATED_SUB_ASSETS);
+                            xrefField.addReference(GUID.UID_ASSET_RELATION_IS_VARIATION, result.id, asset.name);
+                            parentRecord.setAssetXRefValue(GUID.UID_REC_RELATED_SUB_ASSETS, xrefField);
+                            parentRecord.save();
+                            result.parentId = parentId;
+                        } catch (FieldNotFoundException fe) {
+                            // ???
+                            logger.debug("Record sub assets field does not exist - prepare catalog for variants (Record master Assets, Record Sub Assets fields)");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (thePool != null && recordCollection != null) {
+                thePool.returnWriteObject(recordCollection);
+            }
         }
         return result;
     }
@@ -1016,33 +1099,39 @@ public class CumulusBean extends DamBean {
                 recordCollection.catalogAsset(cumulusAsset, assetHandlingSet, null, EnumSet.noneOf(CatalogingFlag.class), (CatalogingListener<ItemCollection>) catalogingListener);
                 logger.debug(" --- asset cataloging done: " + file.getName());
                 result.id = catalogingListener.getItemId();
-                boolean doSave = false;
-                RecordItem recordItem = recordCollection.getRecordItemByID(result.id);
-                if (fieldDescriptors != null && fieldValues != null && fieldDescriptors.length == fieldValues.length) {
-                    // update fields
-                    Locale loc = null;
-                    if (locale != null) {
-                        loc = getLocale(locale);
-                    } else {
-                        loc = Locale.getDefault();
+                if (result.id != -1) {
+                    boolean doSave = false;
+                    RecordItem recordItem = recordCollection.getRecordItemByID(result.id);
+                    if (fieldDescriptors != null && fieldValues != null && fieldDescriptors.length == fieldValues.length) {
+                        // update fields
+                        Locale loc = null;
+                        if (locale != null) {
+                            loc = getLocale(locale);
+                        } else {
+                            loc = Locale.getDefault();
+                        }
+                        for (int f = 0; f < fieldDescriptors.length; f++) {
+                            GUID guid = new GUID(fieldDescriptors[f].guid);
+                            setFieldValue(recordItem, guid, fieldValues[f], layout, loc);
+                        }
+                        doSave = true;
                     }
-                    for (int f = 0; f < fieldDescriptors.length; f++) {
-                        GUID guid = new GUID(fieldDescriptors[f].guid);
-                        setFieldValue(recordItem, guid, fieldValues[f], layout, loc);
+                    if (categories != null && categories.length > 0) {
+                        AllCategoriesItemCollection allCategoriesItemCollection = thePool.getAllCategoriesItemCollection(true);
+                        rootCategory = allCategoriesItemCollection.getCategoryTreeCatalogRootCategory();
+                        CategoryItem parentCategory = rootCategory;
+                        processCategories(recordItem, parentCategory, allCategoriesItemCollection, categories);
+                        doSave = true;
                     }
-                    doSave = true;
+                    if (doSave) {
+                        recordItem.save();
+                    }
+                    logger.info(" catalog asset: " + file.getName() + " done with record id: " + result.id);
+                } else {
+                    logger.info("failed to catalog asset: " + file.getName() + " to Cumulus");
                 }
-                if (categories != null && categories.length > 0) {
-                    AllCategoriesItemCollection allCategoriesItemCollection = thePool.getAllCategoriesItemCollection(true);
-                    rootCategory = allCategoriesItemCollection.getCategoryTreeCatalogRootCategory();
-                    CategoryItem parentCategory = rootCategory;
-                    processCategories(recordItem, parentCategory, allCategoriesItemCollection, categories);
-                    doSave = true;
-                }
-                if (doSave) {
-                    recordItem.save();
-                }
-                logger.info(" catalog asset: " + file.getName() + " done with record id: " + result.id);
+            } else {
+                logger.info("could not get record collection to write - check your connection pool configuration in web.xml");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1131,13 +1220,71 @@ public class CumulusBean extends DamBean {
     }
 
     /**
-     * Preview an asset at full size using the Cumulus Pixel Image Converter, used the temp directory
+     * Try to checkout an asset. Only makes sense if an asset is versionable.
+     * If the version specified does not exist, reject the checkout
+     * If getData is true get the actual asset also
+     *
      * @param connection catalog name username and password for connection to Cumulus
-     * @param recordId
+     * @param id
+     * @param version the version to checkout, -1 means checkout the latest version
      * @return
      */
-    public byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId) {
-        return getAssetFullPreview(connection, recordId, tempDir);
+    public DamAsset checkoutAsset(DamConnectionInfo connection, int id, int version, boolean getData) {
+        DamAsset result = new DamAsset();
+        CumulusConnectionPool thePool = null;
+        RecordItem recordItem = null;
+        try {
+            thePool = getPool(connection);
+            recordItem = thePool.getRecordItemById(id, false);
+            if (!recordItem.isCheckedOut()) {
+                result = new DamAsset();
+                AssetReference assetReference = recordItem.getAssetReferenceValue(GUID.UID_REC_ASSET_REFERENCE);
+                Asset asset = assetReference.getAsset(true);
+                if (asset.supportsVersioning()) {
+                    Asset checkedOutAsset = recordItem.checkout(new Asset(recordItem.getCumulusSession(), tempDir));
+                    result.name = recordItem.getStringValue(GUID.UID_REC_ASSET_NAME);
+                    if (getData) {
+                        if (version >= 0) {
+                            asset.useVersion(version);
+                        } else {
+                            asset.useVersion(0);
+                        }
+                        result.data = CumulusUtilities.getBytesFromAsset(assetReference.getAsset(false));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (thePool != null && recordItem != null) {
+                thePool.releaseReadRecordItem(recordItem);
+            }
+        }
+        return result;
+    }
+
+    /**
+     *
+     * @param connection
+     * @param id
+     * @return
+     */
+    public int[] getAssetVersions(DamConnectionInfo connection, int id) {
+        int[] result = new int[0];
+        CumulusConnectionPool thePool = null;
+        RecordItem recordItem = null;
+        try {
+            thePool = getPool(connection);
+            recordItem = thePool.getRecordItemById(id, false);
+            result = recordItem.getAssetReferenceValue(GUID.UID_REC_ASSET_REFERENCE).getAsset(true).getVersionNumbers();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (thePool != null && recordItem != null) {
+                thePool.releaseReadRecordItem(recordItem);
+            }
+        }
+        return result;
     }
 
     /**
@@ -1147,7 +1294,7 @@ public class CumulusBean extends DamBean {
      * @param dir
      * @return
      */
-    public byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId, File dir) {
+    public byte[] getAssetFullPreview(DamConnectionInfo connection, Integer recordId, File cacheFile) {
         byte[] result = new byte[0];
         RecordItem recordItem = null;
         try {
@@ -1159,6 +1306,7 @@ public class CumulusBean extends DamBean {
             tempFile.delete();
              * */
             result = CumulusUtilities.getPreviewData(recordItem);
+            saveFullPreview(cacheFile, result);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -1261,8 +1409,8 @@ public class CumulusBean extends DamBean {
      * then it can be used to generate the preview if it s missing.
      * @return
      */
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height) {
-        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, width, height, "jpg", null);
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int width, int height, int rotateQuadrant) {
+        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, width, height, rotateQuadrant, "jpg", null);
     }
 
     /**
@@ -1276,10 +1424,10 @@ public class CumulusBean extends DamBean {
      *
      * As of Daft.lib version 3.2 we no longer store the previews in the catalog, they must live in the cache
      * There is no real value to this except using up catalog space
-     * 
+     * e
      * @return
      */
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile) {
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile) {
         byte[] result = new byte[0];
         RecordItem recordItem = null;
         try {
@@ -1287,7 +1435,7 @@ public class CumulusBean extends DamBean {
             if (nameBits.length > 1) {
                 try {
                     int size = new Integer(nameBits[1]);
-                    result = buildAssetMaxSizePreview(connection, recordId, compressionLevel, size, format, cacheFile);
+                    result = buildAssetMaxSizePreview(connection, recordId, compressionLevel, size, rotateQuadrant, format, cacheFile);
                 } catch (NumberFormatException nfe) {
                     //ignore
                 }
@@ -1295,7 +1443,7 @@ public class CumulusBean extends DamBean {
                 if (width > 0 && height > 0) {
                     logger.info("Needed to create preview: '" + previewName + "' for record with id: " + recordId + " in catalog: " + connection.catalogName
                             + " top: " + top + " left: " + left + " width: " + width + " height: " + height + " format " + format);
-                    result = buildAssetPreview(connection, recordId, compressionLevel, top, left, width, height, format, cacheFile);
+                    result = buildAssetPreview(connection, recordId, compressionLevel, top, left, width, height, rotateQuadrant, format, cacheFile);
                 }
             }
         } catch (Exception e) {
@@ -1315,8 +1463,8 @@ public class CumulusBean extends DamBean {
      * then it can be used to generate the preview if it s missing.
      * @return
      */
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, String format, int compressionLevel) {
-        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, -1, -1, format, null);
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int rotateQuadrant, String format, int compressionLevel) {
+        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, -1, -1, rotateQuadrant, format, null);
     }
 
     /**
@@ -1329,8 +1477,8 @@ public class CumulusBean extends DamBean {
      * then it can be used to generate the preview if it s missing.
      * @return
      */
-    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, String format, File cacheFile) {
-        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, -1, -1, format, cacheFile);
+    public byte[] getAssetPreviewByName(DamConnectionInfo connection, Integer recordId, String previewName, int compressionLevel, int rotateQuadrant, String format, File cacheFile) {
+        return getAssetPreviewByName(connection, recordId, previewName, compressionLevel, -1, -1, -1, -1, rotateQuadrant, format, cacheFile);
     }
 
     /**
@@ -1344,8 +1492,8 @@ public class CumulusBean extends DamBean {
      * @param cacheFile
      * @return
      */
-    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile) {
-        return buildAssetMaxSizePreview(connection, recordId, compressionLevel, maxSize, format, cacheFile, true);
+    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile) {
+        return buildAssetMaxSizePreview(connection, recordId, compressionLevel, maxSize, rotateQuadrant, format, cacheFile, true);
     }
 
     /**
@@ -1359,7 +1507,7 @@ public class CumulusBean extends DamBean {
      * @param cacheFile
      * @return
      */
-    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, String format, File cacheFile, boolean returnData) {
+    public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile, boolean returnData) {
         byte[] result = new byte[0];
         int cl = compressionLevel;
         if (cl < 0 && cl > 10) {
@@ -1389,8 +1537,70 @@ public class CumulusBean extends DamBean {
                 h = maxSize;
                 w = (int) (new Integer(maxSize).doubleValue() / aspectRatio);
             }
-            BufferedImage img = scalePreview(imagingPixmap, w, h);
+            BufferedImage img = null;
+
+            if (rotateQuadrant == 0) {
+                img = scalePreview(imagingPixmap, w, h);
+            } else {
+                img = scaleAndRotatePreview(imagingPixmap, rotateQuadrant, w, h);
+            }
             logger.debug("Saving preview to file: " + cacheFile + " for max size: " + maxSize);
+            savePreview(cacheFile, format, img);
+            //savePreview(cacheFile, format, imagingPixmap);
+            if (returnData) {
+                result = Utilities.getBytesFromFile(cacheFile);
+            }
+        } catch (Exception e) {
+            logger.info(e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (thePool != null && recordItem != null) {
+                thePool.releaseReadRecordItem(recordItem);
+            }
+        }
+        return result;
+    }
+
+    /**
+     *
+     * @param connection
+     * @param recordId
+     * @param previewName
+     * @param compressionLevel
+     * @param quadrant
+     * @param format
+     * @param cacheFile
+     * @return
+     */
+    public byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile) {
+        return buildAssetRotatePreview(connection, recordId, compressionLevel, quadrant, format, cacheFile, true);
+    }
+
+    /**
+     *
+     * @param connection
+     * @param recordId
+     * @param previewName
+     * @param compressionLevel
+     * @param quadrant
+     * @param format
+     * @param cacheFile
+     * @return
+     */
+    public byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile, boolean returnData) {
+        byte[] result = new byte[0];
+        int cl = compressionLevel;
+        if (cl < 0 && cl > 10) {
+            cl = 10;
+        }
+        CumulusConnectionPool thePool = null;
+        RecordItem recordItem = null;
+        try {
+            thePool = getPool(connection);
+            recordItem = thePool.getRecordItemById(recordId, false);
+            ImagingPixmap imagingPixmap = ImagingPixmap.getPixmap(recordItem);
+            BufferedImage img = rotatePreview(imagingPixmap, quadrant);
+            logger.debug("Saving preview to file: " + cacheFile + " for rotation quadrant: " + quadrant);
             savePreview(cacheFile, format, img);
             //savePreview(cacheFile, format, imagingPixmap);
             if (returnData) {
@@ -1431,22 +1641,18 @@ public class CumulusBean extends DamBean {
             //logger.debug("   --- about to build preview"+preview.getName());
             if (preview.getPreviewType() == DamPreview.Types.MaxSize) {
                 buildAssetMaxSizePreview(connection, recordId,
-                        preview.getCompressionLevel(), preview.getSize(), preview.getFormatName(),
-                        cacheFile, false);
+                        preview.getCompressionLevel(), preview.getSize(), 0, preview.getFormatName(), cacheFile, false);
             } else if (preview.getPreviewType() == DamPreview.Types.ScaledBox) {
                 buildAssetPreview(connection, recordId,
-                        preview.getCompressionLevel(),
-                        -1, -1,
-                        preview.getWidth(), preview.getHeight(),
-                        preview.getFormatName(),
-                        cacheFile, false);
+                        preview.getCompressionLevel(), -1, -1,
+                        preview.getWidth(), preview.getHeight(), 0,
+                        preview.getFormatName(), cacheFile, false);
             } else if (preview.getPreviewType() == DamPreview.Types.CroppedBox) {
                 buildAssetPreview(connection, recordId,
                         preview.getCompressionLevel(),
                         preview.getTop(), preview.getLeft(),
-                        preview.getWidth(), preview.getHeight(),
-                        preview.getFormatName(),
-                        cacheFile, false);
+                        preview.getWidth(), preview.getHeight(), 0,
+                        preview.getFormatName(), cacheFile, false);
             }
         }
     }
@@ -1461,8 +1667,8 @@ public class CumulusBean extends DamBean {
      * @param returnData
      * @return
      */
-    public byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile) {
-        return buildAssetPreview(connection, recordId, compressionLevel, top, left, width, height, format, cacheFile, true);
+    public byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile) {
+        return buildAssetPreview(connection, recordId, compressionLevel, top, left, width, height, rotateQuadrant, format, cacheFile, true);
     }
 
     /**
@@ -1475,7 +1681,7 @@ public class CumulusBean extends DamBean {
      * @param returnData
      * @return
      */
-    private byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, String format, File cacheFile, boolean returnData) {
+    private byte[] buildAssetPreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int top, int left, int width, int height, int rotateQuadrant, String format, File cacheFile, boolean returnData) {
         byte[] result = new byte[0];
         CumulusConnectionPool thePool = null;
         RecordItemCollection collection = null;
@@ -1507,7 +1713,13 @@ public class CumulusBean extends DamBean {
                 }
                 double aspectRatio = rh / rw;
                 if (fullPreview) {
-                    Raster raster = imagingPixmap.getBufferedImage().getRaster();
+                    BufferedImage img = null;
+                    if (rotateQuadrant > 0) {
+                        img = rotatePreview(imagingPixmap, rotateQuadrant);
+                    } else {
+                        img = imagingPixmap.getBufferedImage();
+                    }
+                    Raster raster = img.getRaster();
                     result = new byte[(int) rw * (int) rh * raster.getNumDataElements()];
                     raster.getDataElements(0, 0, (int) rw, (int) rh, result);
                 } else if (maxSize) {
@@ -1520,7 +1732,12 @@ public class CumulusBean extends DamBean {
                         h = (int) (new Integer(w).doubleValue() * aspectRatio);
                     }
                     //imagingPixmap.scale(w, h);
-                    BufferedImage img = scalePreview(imagingPixmap, w, h);
+                    BufferedImage img = null;
+                    if (rotateQuadrant >= 1 && rotateQuadrant <= 3) {
+                        img = scaleAndRotatePreview(imagingPixmap, rotateQuadrant, w, h);
+                    } else {
+                        img = scalePreview(imagingPixmap, w, h);
+                    }
                     savePreview(cacheFile, format, img);
                     if (returnData) {
                         logger.debug("saving preview to file: " + cacheFile);
@@ -1528,7 +1745,13 @@ public class CumulusBean extends DamBean {
                     }
                 } else if (simpleCrop) {
                     logger.debug("doing simple crop");
-                    BufferedImage img = cropPreview(imagingPixmap, left, top, width, height);
+                    BufferedImage img = null;
+                    logger.debug("cropping with rotateQuadrant: "+rotateQuadrant);
+                    if (rotateQuadrant >= 1 && rotateQuadrant <= 3) {
+                        img = cropAndRotatePreview(imagingPixmap, rotateQuadrant, left, top, width, height);
+                    } else {
+                        img = cropPreview(imagingPixmap, left, top, width, height);
+                    }
                     savePreview(cacheFile, format, img);
                     if (returnData) {
                         logger.debug("saving preview to file: " + cacheFile);
@@ -1543,7 +1766,12 @@ public class CumulusBean extends DamBean {
                     } else if (rh < rw) {
                         w = (int) (new Integer(h).doubleValue() / aspectRatio);
                     }
-                    BufferedImage img = scalePreview(imagingPixmap, w, h);
+                    BufferedImage img = null;
+                    if (rotateQuadrant >= 1 && rotateQuadrant <= 3) {
+                        img = scaleAndRotatePreview(imagingPixmap, rotateQuadrant, w, h);
+                    } else {
+                        img = scalePreview(imagingPixmap, w, h);
+                    }
                     //imagingPixmap.scale(w, h);
 
                     int scaledTop = 0;
@@ -1591,6 +1819,135 @@ public class CumulusBean extends DamBean {
         result = tImage.getSubimage(left, top, width, height);
         return result;
 
+        //return pixmap.getBufferedImage().getSubimage(left, top, width, height);
+
+    }
+
+    private BufferedImage rotatePreview(ImagingPixmap pixmap, int quadrant) throws Exception {
+        return scaleAndRotatePreview(pixmap, quadrant, -1, -1);
+    }
+
+    private BufferedImage cropAndRotatePreview(ImagingPixmap pixmap, int quadrant, int left, int top, int width, int height) throws Exception {
+        BufferedImage result = null;
+        if (quadrant >= 1 && quadrant <= 3) {
+            // only support quadrant rotation
+            BufferedImage img = pixmap.getBufferedImage();
+            int w = width;
+            int h = height;
+            double ar = new Double(w) / new Double(h);
+            AffineTransform s = new AffineTransform();
+            BufferedImage cImage = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_INT_RGB);
+            AffineTransformOp sop = new AffineTransformOp(s, AffineTransformOp.TYPE_BICUBIC);
+            sop.filter(img, cImage);
+            BufferedImage tImage = cImage.getSubimage(left, top, width, height);
+            s = new AffineTransform();
+            switch (quadrant) {
+                case 1:
+                    // 90 degrees
+                    result = new BufferedImage(h, w, BufferedImage.TYPE_INT_RGB);
+                    if (ar > 0.0) {
+                        // source is landscape
+                        s.quadrantRotate(1, new Double(w / 2) - (w - h) / 2, new Double(h / 2));
+                    } else if (ar < 0.0) {
+                        // source is portrait
+                        s.quadrantRotate(1, new Double(w / 2), new Double(h / 2) - (h - w) / 2);
+                    } else {
+                        // source is square
+                        s.quadrantRotate(1, new Double(w / 2), new Double(h / 2));
+                    }
+                    break;
+                case 2:
+                    // 180 degrees
+                    result = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+                    s.quadrantRotate(2, new Double(w / 2), new Double(h / 2));
+                    break;
+                case 3:
+                    // 270 degrees
+                    result = new BufferedImage(h, w, BufferedImage.TYPE_INT_RGB);
+                    if (ar > 0.0) {
+                        // source is landscape
+                        s.quadrantRotate(3, new Double(w / 2), new Double(h / 2 - (h - w) / 2));
+                    } else if (ar < 0.0) {
+                        // source is portrait
+                        s.quadrantRotate(3, new Double(w / 2) - (w - h) / 2, new Double(h / 2));
+                    } else {
+                        // source is square
+                        s.quadrantRotate(3, new Double(w / 2), new Double(h / 2));
+                    }
+                    break;
+                default:
+                    break;
+            }
+            // handle orientation change
+            sop = new AffineTransformOp(s, AffineTransformOp.TYPE_BICUBIC);
+            sop.filter(tImage, result);
+        }
+        return result;
+    }
+
+    private BufferedImage scaleAndRotatePreview(ImagingPixmap pixmap, int quadrant, int sw, int sh) throws Exception {
+        BufferedImage result = null;
+        if (quadrant >= 1 && quadrant <= 3) {
+            // only support quadrant rotation
+            BufferedImage img = pixmap.getBufferedImage();
+            int w = img.getWidth();
+            int h = img.getHeight();
+            double ar = new Double(w) / new Double(h);
+            AffineTransform s = new AffineTransform();
+            if (sw > 0 && sh > 0) {
+                // first we set up the scale
+                double wf = new Integer(sw).doubleValue() / new Integer(img.getWidth()).doubleValue();
+                double hf = new Integer(sh).doubleValue() / new Integer(img.getHeight()).doubleValue();
+                s.scale(wf, hf);
+                w = sw;
+                h = sh;
+            }
+            BufferedImage tImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+            AffineTransformOp sop = new AffineTransformOp(s, AffineTransformOp.TYPE_BICUBIC);
+            sop.filter(img, tImage);
+            s = new AffineTransform();
+            switch (quadrant) {
+                case 1:
+                    // 90 degrees
+                    result = new BufferedImage(h, w, BufferedImage.TYPE_INT_RGB);
+                    if (ar > 0.0) {
+                        // source is landscape
+                        s.quadrantRotate(1, new Double(w / 2) - (w - h) / 2, new Double(h / 2));
+                    } else if (ar < 0.0) {
+                        // source is portrait
+                        s.quadrantRotate(1, new Double(w / 2), new Double(h / 2) - (h - w) / 2);
+                    } else {
+                        // source is square
+                        s.quadrantRotate(1, new Double(w / 2), new Double(h / 2));
+                    }
+                    break;
+                case 2:
+                    // 180 degrees
+                    result = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+                    s.quadrantRotate(2, new Double(w / 2), new Double(h / 2));
+                    break;
+                case 3:
+                    // 270 degrees
+                    result = new BufferedImage(h, w, BufferedImage.TYPE_INT_RGB);
+                    if (ar > 0.0) {
+                        // source is landscape
+                        s.quadrantRotate(3, new Double(w / 2), new Double(h / 2 - (h - w) / 2));
+                    } else if (ar < 0.0) {
+                        // source is portrait
+                        s.quadrantRotate(3, new Double(w / 2) - (w - h) / 2, new Double(h / 2));
+                    } else {
+                        // source is square
+                        s.quadrantRotate(3, new Double(w / 2), new Double(h / 2));
+                    }
+                    break;
+                default:
+                    break;
+            }
+            // handle orientation change
+            sop = new AffineTransformOp(s, AffineTransformOp.TYPE_BICUBIC);
+            sop.filter(tImage, result);
+        }
+        return result;
     }
 
     private BufferedImage scalePreview(ImagingPixmap pixmap, int w, int h) throws Exception {
@@ -1602,13 +1959,15 @@ public class CumulusBean extends DamBean {
         s.scale(wf, hf);
         AffineTransformOp sop = new AffineTransformOp(s, AffineTransformOp.TYPE_BICUBIC);
         BufferedImage tImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        sop.filter(pixmap.getBufferedImage(), tImage);
+        sop.filter(img, tImage);
         result = tImage;
+
         return result;
+
     }
 
     /**
-     * 
+     *
      * @param file
      * @param format
      * @param pixmap
@@ -1616,14 +1975,6 @@ public class CumulusBean extends DamBean {
     private void savePreview(File file, String format, ImagingPixmap pixmap) {
         boolean ok = false;
         try {
-            //BufferedImage bi = pixmap.getBufferedImage();
-
-            // If nor RGB source (e.g. CMYK), need to convert to RGB (or find a way to handle the appropriate model)
-            //TODO For previews, RGB should be fine, but must document this is not used for any sort of soft proofing
-            //int[] rgbArray = bi.getRGB(0, 0, bi.getWidth(), bi.getHeight(), null, 0, bi.getWidth());
-            //bi.setRGB(0, 0, bi.getWidth(), bi.getHeight(), rgbArray, 0, bi.getWidth());
-
-
             logger.debug("preview buffer height: " + pixmap.getBufferedImage().getHeight());
             if (format == null || "".equals(format)) {
                 ok = ImageIO.write(pixmap.getBufferedImage(), "jpg", file);
@@ -1648,7 +1999,6 @@ public class CumulusBean extends DamBean {
     private void savePreview(File file, String format, BufferedImage bi) {
         boolean ok = false;
         try {
-            logger.debug("preview buffer height: " + bi.getHeight());
             if (format == null || "".equals(format)) {
                 ok = ImageIO.write(bi, "jpg", file);
                 logger.debug("default preview for file: " + file.getAbsolutePath() + " saved with status " + ok);
@@ -1662,6 +2012,24 @@ public class CumulusBean extends DamBean {
         }
     }
 
+    /**
+     *
+     * @param file
+     * @param format
+     * @param pixmap
+     */
+    private void saveFullPreview(File file, byte[] data) {
+        boolean ok = false;
+        try {
+            FileOutputStream fos = new FileOutputStream(file);
+            fos.write(data);
+            fos.flush();
+            fos.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     protected void setFieldValue(Item item, GUID guid, DamFieldValue fieldValue, Layout layout, Locale locale) throws Exception {
         switch (fieldValue.dataType) {
             case FieldTypes.FieldTypeString:
@@ -1670,30 +2038,60 @@ public class CumulusBean extends DamBean {
                 // of a formula field "Eniro ProductId" directly"
                 try {
                     item.setStringValue(guid, fieldValue.stringValue);
+
+
                 } catch (Exception se) {
                     // do nothing - assume furmula field
                 }
                 break;
+
+
             case FieldTypes.FieldTypeInteger:
                 item.setIntValue(guid, fieldValue.integerValue);
+
+
                 break;
+
+
             case FieldTypes.FieldTypeLong:
                 item.setLongValue(guid, fieldValue.longValue);
+
+
                 break;
+
+
             case FieldTypes.FieldTypeDouble:
                 item.setDoubleValue(guid, fieldValue.doubleValue);
+
+
                 break;
+
+
             case FieldTypes.FieldTypeBool:
                 item.setBooleanValue(guid, fieldValue.booleanValue);
+
+
                 break;
+
+
             case FieldTypes.FieldTypePicture:
                 item.setPictureValue(guid, new Pixmap(fieldValue.byteArrayValue));
+
+
                 break;
+
+
             case FieldTypes.FieldTypeDate:
                 fieldValue.longValue = item.getDateValue(guid).getTime();
+
+
                 break;
+
+
             case FieldTypes.FieldTypeBinary:
                 item.setBinaryValue(guid, fieldValue.byteArrayValue);
+
+
                 break;
             /*
             case FieldTypes.FieldTypeEnum:
@@ -1733,6 +2131,8 @@ public class CumulusBean extends DamBean {
             break;
              */
 
+
+
             case FieldTypes.FieldTypeTable:
                 ItemCollection tableCollection = item.getTableValue(guid);
                 Layout tableLayout = tableCollection.getLayout();
@@ -1771,9 +2171,15 @@ public class CumulusBean extends DamBean {
                  */
                 tableCollection.close();
                 //result.tableValue = wsTableValue;
+
+
                 break;
+
+
             default:
                 break;
+
+
         }
     }
 
@@ -1842,8 +2248,7 @@ public class CumulusBean extends DamBean {
                         default:
                             result.stringListValue = new DamStringListValue[1];
                             wsStringListValue = new DamStringListValue();
-                            stringListValue =
-                                    item.getStringEnumValue(guid);
+                            stringListValue = item.getStringEnumValue(guid);
                             wsStringListValue.id = stringListValue.getID();
                             wsStringListValue.displayString = stringListValue.getDisplayString(locale);
                             result.stringListValue[0] = wsStringListValue;
@@ -1852,7 +2257,6 @@ public class CumulusBean extends DamBean {
                     }
                     result.dataType = FieldTypes.FieldTypeEnum;
                     break;
-
                 case FieldTypes.FieldTypeTable:
                     ItemCollection tableCollection = item.getTableValue(guid);
                     Layout tableLayout = tableCollection.getLayout();
@@ -1866,7 +2270,6 @@ public class CumulusBean extends DamBean {
                         }
                         wsTableValue.columnNames[cc++] = tableLayout.getFieldDefinition(tableGuid).getName(LanguageManager.getCumulusLanguageId(locale));
                     }
-
                     wsTableValue.rows = new DamTableItemValue[tableCollection.getItemCount()];
                     int tc = 0;
                     for (Item tableItem : tableCollection) {
@@ -1905,7 +2308,7 @@ public class CumulusBean extends DamBean {
     @Override
     public void destroy() {
         try {
-            logger.info("eBean shutitng down.");
+            logger.info("CumulusBean shutitng down.");
             super.destroy();
         } catch (Exception e) {
             e.printStackTrace();
@@ -1937,7 +2340,6 @@ public class CumulusBean extends DamBean {
         } catch (Exception e) {
             //e.printStackTrace();
         }
-
         return result;
     }
 
@@ -1966,14 +2368,12 @@ public class CumulusBean extends DamBean {
                 // should not happen, ignore
                 continue;
             }
-
             if (!category.name.startsWith("$")) {
                 CategoriesFieldValue cfv = recordItem.getCategoriesValue();
                 cfv.addIDs(categoryIds);
                 recordItem.setCategoriesValue(cfv);
                 recordItem.save();
             }
-
             if (category.subCategories != null || category.subCategories.length > 0) {
                 processCategories(recordItem, categoryItem, collection, category.subCategories);
             }
@@ -2030,6 +2430,79 @@ public class CumulusBean extends DamBean {
         return CumulusUtilities.createCumulusFieldValue(fieldDescriptor, value);
     }
 
+    @Override
+    public boolean makeAssetVariant(Integer parentId, Integer recordId) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public DamRecordLock lockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog) {
+        DamRecordLock result = new DamRecordLock();
+        result.setId(id);
+        RecordItem recordItem = null;
+        try {
+            recordItem = getPool(connection).getRecordItemById(id, true);
+            if (!recordItem.hasValue(UID_REC_DAFT_LOCKED) || !recordItem.getBooleanValue(UID_REC_DAFT_LOCKED)) {
+                Date now = new Date();
+                recordItem.setBooleanValue(UID_REC_DAFT_LOCKED, true);
+                recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, userName);
+                recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, now);
+                recordItem.save();
+                result.setLocked(true);
+                result.setLockedBy(userName);
+                result.setLockedTime(now);
+                if (doLog) {
+                    eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
+               }
+            } else {
+                if (doLog) {
+                    eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
+                }
+            }
+        } catch (Exception e) {
+                     eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
+            e.printStackTrace();
+        } finally {
+            getPool(connection).releaseReadRecordItem(recordItem);
+        }
+        return result;
+    }
+
+    @Override
+    public DamRecordLock unlockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog) {
+        DamRecordLock result = new DamRecordLock();
+        result.setId(id);
+        RecordItem recordItem = null;
+        try {
+            recordItem = getPool(connection).getRecordItemById(id, true);
+            if (recordItem.hasValue(UID_REC_DAFT_LOCKED) && recordItem.getBooleanValue(UID_REC_DAFT_LOCKED)) {
+                String lockedBy = recordItem.getStringValue(UID_REC_DAFT_LOCKED_BY);
+                if (lockedBy.equals(userName)) {
+                    recordItem.setBooleanValue(UID_REC_DAFT_LOCKED, false);
+                    recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, userName);
+                    recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, null);
+                    recordItem.save();
+                    result.setLocked(false);
+                    result.setLockedBy("");
+                    result.setLockedTime(null);
+                if (doLog) {
+                    eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
+               }
+                }
+            } else {
+                if (doLog) {
+                    eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
+               }
+            }
+        } catch (Exception e) {
+                    eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
+            e.printStackTrace();
+        } finally {
+            getPool(connection).releaseReadRecordItem(recordItem);
+        }
+        return result;
+    }
+
     /**
      * Class that implements callbacks for Cumulus cataloging
      */
@@ -2039,39 +2512,37 @@ public class CumulusBean extends DamBean {
         private int itemId = NULL_ID;
 
         public WsCatalogingListener() {
+            //logger.debug(" --- cataloging listener created");
         }
 
         public void catalogingStarted(CatalogingEventObject<ItemCollection> event) {
+            //logger.debug(" --- cataloging started");
             itemId = NULL_ID;
         }
 
-        @SuppressWarnings("empty-statement")
         public void catalogingFinished(CatalogingEventObject<ItemCollection> event) {
-            ;
+            //logger.debug(" --- cataloging finished");
         }
 
-        @SuppressWarnings("empty-statement")
         public void countingAssets(CatalogingEventObject<ItemCollection> event) {
-            ;
+            logger.debug(" --- coubting assets");
         }
 
         public void assetAdded(CatalogingEventObject<ItemCollection> event) {
+            //logger.debug(" --- added asset");
             itemId = event.getItemID();
         }
 
-        @SuppressWarnings("empty-statement")
         public void assetUpdated(CatalogingEventObject<ItemCollection> event) {
-            ;
+            //logger.debug(" --- updated asset");
         }
 
-        @SuppressWarnings("empty-statement")
         public void assetIgnored(CatalogingEventObject<ItemCollection> event) {
-            ;
+            logger.debug(" --- asset ignored");
         }
 
-        @SuppressWarnings("empty-statement")
         public void assetFailed(CatalogingEventObject<ItemCollection> event) {
-            ;
+            logger.debug(" --- asset failed with error: " + event.getErrorMessage());
         }
 
         public int getItemId() {
@@ -2083,4 +2554,3 @@ public class CumulusBean extends DamBean {
         }
     }
 }
-

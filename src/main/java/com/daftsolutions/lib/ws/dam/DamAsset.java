@@ -10,22 +10,19 @@ package com.daftsolutions.lib.ws.dam;
  */
 public class DamAsset {
 
-   /**
-    *
-    */
-   public DamResultStatus status = new DamResultStatus();
-   /**
-    *
-    */
-   public String name = DamFieldValue.EMPTY_STRING;
-   /**
-    *
-    */
-   public byte[] data = new byte[0];
+    public DamResultStatus status = new DamResultStatus();
+    /**
+     * The asset name
+     */
+    public String name = DamFieldValue.EMPTY_STRING;
+    /**
+     * The actual asset data
+     */
+    public byte[] data = new byte[0];
 
-   /**
-    *
-    */
-   public DamAsset() {
-   }
+    /**
+     *
+     */
+    public DamAsset() {
+    }
 }
