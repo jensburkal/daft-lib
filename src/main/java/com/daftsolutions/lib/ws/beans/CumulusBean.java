@@ -95,10 +95,9 @@ public class CumulusBean extends DamBean {
     public final static GUID UID_REC_DAFT_LOCKED_BY = new GUID("{7D38F904-E866-4655-8D52-CC5B8ABB8597}");
     public final static GUID UID_REC_DAFT_LOCKED_TIME = new GUID("{D8BB0B6E-A51A-486A-BD4C-C01C2FB5C865}");
     public final static GUID UID_REC_DAFT_LOCKED_LABEL = new GUID("{F621CB44-0A6C-4CFD-AE31-067DBC7177E2}");
-
     public final static String LOG_MESSAGE_ASSET_LOCKED = "Asset Locked";
     public final static String LOG_MESSAGE_ASSET_UNLOCKED = "Asset Unlocked";
-
+    public final static String LOG_MESSAGE_INVALID_USER = "Invalid User";
     // various stuff
     private Server cumulusServer = null;
     private Map<String, Catalog> catalogs = null;
@@ -1746,7 +1745,7 @@ public class CumulusBean extends DamBean {
                 } else if (simpleCrop) {
                     logger.debug("doing simple crop");
                     BufferedImage img = null;
-                    logger.debug("cropping with rotateQuadrant: "+rotateQuadrant);
+                    logger.debug("cropping with rotateQuadrant: " + rotateQuadrant);
                     if (rotateQuadrant >= 1 && rotateQuadrant <= 3) {
                         img = cropAndRotatePreview(imagingPixmap, rotateQuadrant, left, top, width, height);
                     } else {
@@ -2453,14 +2452,14 @@ public class CumulusBean extends DamBean {
                 result.setLockedTime(now);
                 if (doLog) {
                     eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
-               }
+                }
             } else {
                 if (doLog) {
                     eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
                 }
             }
         } catch (Exception e) {
-                     eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
+            eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
             e.printStackTrace();
         } finally {
             getPool(connection).releaseReadRecordItem(recordItem);
@@ -2471,31 +2470,35 @@ public class CumulusBean extends DamBean {
     @Override
     public DamRecordLock unlockAsset(DamConnectionInfo connection, int id, String userName, String comment, boolean doLog) {
         DamRecordLock result = new DamRecordLock();
-        result.setId(id);
         RecordItem recordItem = null;
         try {
             recordItem = getPool(connection).getRecordItemById(id, true);
             if (recordItem.hasValue(UID_REC_DAFT_LOCKED) && recordItem.getBooleanValue(UID_REC_DAFT_LOCKED)) {
                 String lockedBy = recordItem.getStringValue(UID_REC_DAFT_LOCKED_BY);
-                if (lockedBy.equals(userName)) {
+                 if (lockedBy.equals(userName)) {
                     recordItem.setBooleanValue(UID_REC_DAFT_LOCKED, false);
-                    recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, userName);
-                    recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, null);
+                    recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, "");
+                    recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, new Date(0));
                     recordItem.save();
+                    result.setId(id);
                     result.setLocked(false);
                     result.setLockedBy("");
                     result.setLockedTime(null);
-                if (doLog) {
-                    eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
-               }
+                    if (doLog) {
+                        eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
+                    }
+                } else {
+                    if (doLog) {
+                        eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_INVALID_USER, comment);
+                    }
                 }
             } else {
                 if (doLog) {
                     eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
-               }
+                }
             }
         } catch (Exception e) {
-                    eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
+            eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
             e.printStackTrace();
         } finally {
             getPool(connection).releaseReadRecordItem(recordItem);
