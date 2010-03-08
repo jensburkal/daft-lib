@@ -5,7 +5,7 @@
     <groupId>com.daftsolutions</groupId>
     <artifactId>daft-lib</artifactId>
     <packaging>jar</packaging>
-    <version>3.6.1</version>
+    <version>3.7.0</version>
     <name>daft-lib</name>
     <url>http://daft-solutions.com</url>
     <build>

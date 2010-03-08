@@ -29,7 +29,7 @@ import java.util.Properties;
  */
 public abstract class DamBean {
 
-    public final static String VERSION_NUMBER = "3.7";
+    public final static String VERSION_NUMBER = "3.7.0";
     // constants
     public final static String TEMP_DIR = "temp-dir";
     public final static String ENABLE_CACHE = "enable-cache";
