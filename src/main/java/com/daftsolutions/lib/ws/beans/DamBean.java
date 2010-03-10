@@ -37,6 +37,9 @@ public abstract class DamBean {
     public final static String TRUE = "true";
     public final static String FALSE = "false";
     public final static String FIELD_CATEGORY_NAME = "Category Name";
+
+    public static enum LogEvents { Preview, Checkin, Checkout, Download, Upload }
+    
     // various stuff
     protected File tempDir = null;
     protected Properties properties = null;
@@ -636,4 +639,12 @@ public abstract class DamBean {
      * @return
      */
     public abstract boolean makeAssetVariant(Integer parentId, Integer recordId);
+
+    /**
+     * Log an event natively the DAm system
+     * @param event to log
+     * @param message
+     */
+    public abstract void logEvent(DamConnectionInfo connection, int recordId, LogEvents event, String message);
+
 }

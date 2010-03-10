@@ -27,7 +27,7 @@ public class DamRecordLock {
     /**
      * Time asset was locked
      */
-    private Date lockedTime = null;
+    private long lockedTime = 0;
 
     public int getId() {
         return id;
@@ -53,11 +53,11 @@ public class DamRecordLock {
         this.lockedBy = lockedBy;
     }
 
-    public Date getLockedTime() {
+    public long getLockedTime() {
         return lockedTime;
     }
 
-    public void setLockedTime(Date lockedTime) {
+    public void setLockedTime(long lockedTime) {
         this.lockedTime = lockedTime;
     }
 

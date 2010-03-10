@@ -303,4 +303,9 @@ public class DaftDamBean extends DamBean {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    @Override
+    public void logEvent(DamConnectionInfo connection, int recordId, LogEvents event, String message) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
 }

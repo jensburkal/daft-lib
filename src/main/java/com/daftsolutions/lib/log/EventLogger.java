@@ -40,5 +40,5 @@ public class EventLogger {
     public void log(EventLogger.StatusValues status, String catalog, int id, String userName, String message, String comment) {
         logger.info(String.format("%s,%s,%d,%s,%s,%s", status.toString(), catalog, id, userName, message, comment));
     }
-
+    
 }

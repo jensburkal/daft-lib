@@ -19,10 +19,12 @@ import com.canto.cumulus.Pixmap;
 import com.canto.cumulus.RecordItem;
 import com.canto.cumulus.RecordItemCollection;
 import com.canto.cumulus.Server;
+import com.canto.cumulus.constants.AssetUsage;
 import com.canto.cumulus.constants.CatalogingFlag;
 import com.canto.cumulus.events.CatalogingEventObject;
 import com.canto.cumulus.events.CatalogingListener;
 import com.canto.cumulus.exceptions.FieldNotFoundException;
+import com.canto.cumulus.exceptions.ItemNotFoundException;
 import com.canto.cumulus.exceptions.LoginFailedException;
 import com.canto.cumulus.exceptions.QueryParserException;
 import com.canto.cumulus.fieldvalue.AssetReference;
@@ -90,11 +92,13 @@ public class CumulusBean extends DamBean {
     public final static String CUMULUS_DEFAULT_PASSWORD = "cumulus-default-password";
     public final static String CUMULUS_ASSET_HANDLING_SET = "cumulus-asset-handling-set";
     public final static String CUMULUS_ASSET_ACTION = "cumulus-asset-action";
+    // fields to support locking - a Cumulus Catalog Template is provided with the GUIDs listed here
     public final static GUID UID_REC_DAFT_LOCKED = new GUID("{8CB03453-1376-4DA3-BAF1-BBBF230735F9}");
     public final static String FIELD_DAFT_LOCKED_NAME = "daft-locked";
     public final static GUID UID_REC_DAFT_LOCKED_BY = new GUID("{7D38F904-E866-4655-8D52-CC5B8ABB8597}");
     public final static GUID UID_REC_DAFT_LOCKED_TIME = new GUID("{D8BB0B6E-A51A-486A-BD4C-C01C2FB5C865}");
     public final static GUID UID_REC_DAFT_LOCKED_LABEL = new GUID("{F621CB44-0A6C-4CFD-AE31-067DBC7177E2}");
+    public final static GUID UID_REC_DAFT_LOCKED_COMMENT = new GUID("{CB46090D-9A9A-4E4C-A9A8-8A374FFBE2E9}");
     public final static String LOG_MESSAGE_ASSET_LOCKED = "Asset Locked";
     public final static String LOG_MESSAGE_ASSET_UNLOCKED = "Asset Unlocked";
     public final static String LOG_MESSAGE_INVALID_USER = "Invalid User";
@@ -960,7 +964,13 @@ public class CumulusBean extends DamBean {
                     recordItem = recordCollection.getRecordItemByID(result.id);
                     logger.debug(" new record id is: " + result.id + " parent id is: " + parentId);
                     if (parentId > 0) {
-                        RecordItem parentRecord = recordCollection.getRecordItemByID(parentId);
+                        RecordItem parentRecord = null;
+                        try {
+                            parentRecord = recordCollection.getRecordItemByID(parentId);
+                        } catch (ItemNotFoundException infe) {
+                            recordCollection.addItemByID(parentId); // to be sure in case asset handling set prevents this
+                            parentRecord = recordCollection.getRecordItemByID(parentId);
+                        }
                         try {
                             AssetXRefFieldValue xrefField = parentRecord.getAssetXRefValue(GUID.UID_REC_RELATED_SUB_ASSETS);
                             xrefField.addReference(GUID.UID_ASSET_RELATION_IS_VARIATION, result.id, asset.name);
@@ -2445,11 +2455,12 @@ public class CumulusBean extends DamBean {
                 Date now = new Date();
                 recordItem.setBooleanValue(UID_REC_DAFT_LOCKED, true);
                 recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, userName);
+                recordItem.setStringValue(UID_REC_DAFT_LOCKED_COMMENT, comment);
                 recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, now);
                 recordItem.save();
                 result.setLocked(true);
                 result.setLockedBy(userName);
-                result.setLockedTime(now);
+                result.setLockedTime(now.getTime());
                 if (doLog) {
                     eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_LOCKED, comment);
                 }
@@ -2475,15 +2486,16 @@ public class CumulusBean extends DamBean {
             recordItem = getPool(connection).getRecordItemById(id, true);
             if (recordItem.hasValue(UID_REC_DAFT_LOCKED) && recordItem.getBooleanValue(UID_REC_DAFT_LOCKED)) {
                 String lockedBy = recordItem.getStringValue(UID_REC_DAFT_LOCKED_BY);
-                 if (lockedBy.equals(userName)) {
+                if (lockedBy.equals(userName)) {
                     recordItem.setBooleanValue(UID_REC_DAFT_LOCKED, false);
                     recordItem.setStringValue(UID_REC_DAFT_LOCKED_BY, "");
+                    recordItem.setStringValue(UID_REC_DAFT_LOCKED_COMMENT, "");
                     recordItem.setDateValue(UID_REC_DAFT_LOCKED_TIME, new Date(0));
                     recordItem.save();
                     result.setId(id);
                     result.setLocked(false);
                     result.setLockedBy("");
-                    result.setLockedTime(null);
+                    //result.setLockedTime(null);
                     if (doLog) {
                         eventLogger.log(EventLogger.StatusValues.SUCCESS, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
                     }
@@ -2501,9 +2513,39 @@ public class CumulusBean extends DamBean {
             eventLogger.log(EventLogger.StatusValues.FAILURE, connection.catalogName, id, userName, LOG_MESSAGE_ASSET_UNLOCKED, comment);
             e.printStackTrace();
         } finally {
-            getPool(connection).releaseReadRecordItem(recordItem);
+            getPool(connection).releaseWriteRecordItem(recordItem);
         }
         return result;
+    }
+
+    @Override
+    public void logEvent(DamConnectionInfo connection, int recordId, LogEvents event, String message) {
+        RecordItem recordItem = null;
+        try {
+            recordItem = getPool(connection).getRecordItemById(recordId, true);
+            if (recordItem != null) {
+                switch (event) {
+                    case Preview:
+                        recordItem.logUsage(AssetUsage.PREVIEW, message);
+                        break;
+                    case Checkin:
+                        recordItem.logUsage(AssetUsage.CHECKIN, message);
+                        break;
+                    case Checkout:
+                        recordItem.logUsage(AssetUsage.CHECKOUT, message);
+                        break;
+                    case Download:
+                        recordItem.logUsage(AssetUsage.DOWNLOAD, message);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            getPool(connection).releaseWriteRecordItem(recordItem);
+        }
     }
 
     /**
