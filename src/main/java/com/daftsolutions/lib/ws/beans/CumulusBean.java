@@ -344,7 +344,6 @@ public class CumulusBean extends DamBean {
         DamRecordCollection result = new DamRecordCollection();
         try {
             String query = null;
-            logger.debug("calling findRecordsByQuickSearch with terms '" + quickSearch + " for connection '" + connection.catalogName + "'");
             MultiRecordItemCollection c = null;
             RecordItemCollection rc = null;
             CumulusConnectionPool thePool = getPool(connection);
@@ -364,6 +363,35 @@ public class CumulusBean extends DamBean {
             if (query != null) {
                 return findRecords(connection, fieldDescriptors, query, offset, count, locale);
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public DamRecordCollection findCategoryRecords(DamConnectionInfo connection, DamFieldDescriptor[] fieldDescriptors, Integer categoryId, String quickSearch, Integer offset, Integer count, String locale) {
+        DamRecordCollection result = new DamRecordCollection();
+        try {
+            String query = "Categories is :" + categoryId + ":";
+            if (quickSearch != null && !"".equals(quickSearch)) {
+                MultiRecordItemCollection c = null;
+                RecordItemCollection rc = null;
+                CumulusConnectionPool thePool = getPool(connection);
+                try {
+                    c = thePool.getMasterServer().newMultiRecordItemCollection();
+                    // make sure we clone for now, as multi catalog collection seems to close the added collections
+                    //TODO sort this out so that normal pool borrowing can work
+                    //TODO refactor convertQuickSearchToComplexQuery to work with simple collections if possible
+                    rc = (RecordItemCollection) thePool.cloneObjectToRead(RecordItemCollection.class);
+                    c.addItemCollection(rc);
+                    query += " && " + PlatformUtils.convertQuickSearchToComplexQuery(quickSearch, c);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                }
+            }
+            result = findRecords(connection, fieldDescriptors, query, offset, count, locale);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -1519,8 +1547,8 @@ public class CumulusBean extends DamBean {
     public byte[] buildAssetMaxSizePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int maxSize, int rotateQuadrant, String format, File cacheFile, boolean returnData) {
         byte[] result = new byte[0];
         int cl = compressionLevel;
-        if (cl < 0 && cl > 10) {
-            cl = 10;
+        if (cl < 0 && cl > 12) {
+            cl = 12;
         }
         CumulusConnectionPool thePool = null;
         RecordItem recordItem = null;
@@ -1599,8 +1627,8 @@ public class CumulusBean extends DamBean {
     public byte[] buildAssetRotatePreview(DamConnectionInfo connection, Integer recordId, int compressionLevel, int quadrant, String format, File cacheFile, boolean returnData) {
         byte[] result = new byte[0];
         int cl = compressionLevel;
-        if (cl < 0 && cl > 10) {
-            cl = 10;
+        if (cl < 0 && cl > 12) {
+            cl = 12;
         }
         CumulusConnectionPool thePool = null;
         RecordItem recordItem = null;

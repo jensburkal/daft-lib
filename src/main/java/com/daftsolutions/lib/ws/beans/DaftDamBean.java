@@ -308,4 +308,9 @@ public class DaftDamBean extends DamBean {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    @Override
+    public DamRecordCollection findCategoryRecords(DamConnectionInfo connection, DamFieldDescriptor[] fieldDescriptors, Integer categoryId, String quickSearch, Integer offset, Integer count, String locale) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
 }

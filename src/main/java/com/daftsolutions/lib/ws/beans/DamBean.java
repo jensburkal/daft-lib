@@ -154,7 +154,32 @@ public abstract class DamBean {
      */
     public abstract Integer findRecord(DamConnectionInfo connection, String query, String locale);
 
+    /**
+     *
+     * @param connection
+     * @param fieldDescriptors
+     * @param quickSearch
+     * @param offset
+     * @param count
+     * @param locale
+     * @return
+     */
     public abstract DamRecordCollection findRecordsByQuickSearch(DamConnectionInfo connection, DamFieldDescriptor[] fieldDescriptors, String quickSearch, Integer offset, Integer count, String locale);
+
+    /**
+     * Find records for a given category, and aptionally apply a quick search to the resulting collection
+     * @param connection
+     * @param fieldDescriptors
+     * @param categoryId
+     * @param quickSearch
+     * @param offset
+     * @param count
+     * @param locale
+     * @return
+     */public abstract DamRecordCollection findCategoryRecords(DamConnectionInfo connection, DamFieldDescriptor[] fieldDescriptors, Integer categoryId, String quickSearch, Integer offset, Integer count, String locale);
+
+
+
 
     /**
      *

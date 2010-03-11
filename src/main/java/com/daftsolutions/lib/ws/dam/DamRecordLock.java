@@ -29,6 +29,8 @@ public class DamRecordLock {
      */
     private long lockedTime = 0;
 
+    private boolean success = false;
+
     public int getId() {
         return id;
     }
@@ -59,6 +61,14 @@ public class DamRecordLock {
 
     public void setLockedTime(long lockedTime) {
         this.lockedTime = lockedTime;
+    }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public void setSuccess(boolean success) {
+        this.success = success;
     }
 
     public DamRecordLock() {

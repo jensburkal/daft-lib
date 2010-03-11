@@ -86,16 +86,28 @@ public class PreviewCacheManager {
     }
 
     /**
-     * Remove all files in a cache path for a given record id
+     * Remove all files in a cache path for a given record id, or just one preview if a preview name is provided
      * @param cachePath
+     * @param recordId
+     * @param cachePreviewName
      * @throws Exception
      */
-    public void clearPathForRecord(File cachePath, String recordId) throws Exception {
-        File[] clearFiles = cachePath.listFiles(new IdFilenameFilter(recordId));
-        for (File clearFile : clearFiles) {
-            clearFile.delete();
+    public void clearPathForRecord(File cachePath, String recordId, String previewName) throws Exception {
+        if (previewName == null) {
+            File[] clearFiles = cachePath.listFiles(new IdFilenameFilter(recordId));
+            for (File clearFile : clearFiles) {
+                clearFile.delete();
+            }
+        } else {
+            File result = new File(cachePath, recordId + "_" + previewName);
+            try {
+                if (result.exists()) {
+                    result.delete();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-
     }
 
     protected String makePartitionName(String recordId) {
