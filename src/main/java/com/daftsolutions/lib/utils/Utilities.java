@@ -39,11 +39,15 @@ public class Utilities {
      */
     public static byte[] getBytesFromFile(File file) throws IOException {
         InputStream is = new FileInputStream(file);
-        long length = file.length();
-        if (length > Integer.MAX_VALUE) {
-            throw new IOException("File is too large " + file.getName());
+        try {
+            long length = file.length();
+            if (length > Integer.MAX_VALUE) {
+                throw new IOException("File is too large " + file.getName());
+            }
+            return getBytesFromInputStream(is);
+        } finally {
+            is.close();
         }
-        return getBytesFromInputStream(is);
     }
 
     public static byte[] getBytesFromInputStream(InputStream is) throws IOException {
@@ -63,7 +67,6 @@ public class Utilities {
             dataBits.add(buffer.clone());
             totalCount += count;
         }
-        is.close();
         ByteArrayOutputStream bos = new ByteArrayOutputStream(totalCount);
         for (byte[] dataBit : dataBits) {
             bos.write(dataBit, 0, dataBit.length);
