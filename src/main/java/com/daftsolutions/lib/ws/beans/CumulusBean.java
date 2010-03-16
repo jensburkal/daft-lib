@@ -271,7 +271,7 @@ public class CumulusBean extends DamBean {
                             loc = Locale.getDefault();
                         }
                         for (int f = 0; f < fieldDescriptors.length; f++) {
-                            if (fieldValues[f].dataType != DamFieldValue.INVALID_INTEGER) {
+                            if (!fieldValues[f].dataType.equals(DamFieldValue.INVALID_INTEGER)) {
                                 setFieldValue(recordItem, new GUID(fieldDescriptors[f].guid), fieldValues[f], getPool(connection).getRecordLayout(), loc);
                             }
                         }
@@ -662,7 +662,7 @@ public class CumulusBean extends DamBean {
                 Set<Integer> catalogIds = server.getCatalogIDs(false, false);
                 boolean found = false;
                 for (Integer testId : catalogIds) {
-                    if (catalogId == testId) {
+                    if (catalogId.equals(testId)) {
                         found = true;
                         break;
                     }
@@ -1569,10 +1569,10 @@ public class CumulusBean extends DamBean {
                 h = maxSize;
             } else if (rw > rh) {
                 w = maxSize;
-                h = (int) (new Integer(maxSize).doubleValue() * aspectRatio);
+                h = (int) (Integer.valueOf(maxSize).doubleValue() * aspectRatio);
             } else {
                 h = maxSize;
-                w = (int) (new Integer(maxSize).doubleValue() / aspectRatio);
+                w = (int) (Integer.valueOf(maxSize).doubleValue() / aspectRatio);
             }
             BufferedImage img = null;
 
