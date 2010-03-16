@@ -2389,10 +2389,10 @@ public class CumulusBean extends DamBean {
      */
     protected void processCategories(RecordItem recordItem, CategoryItem parentCategory, CategoryItemCollection collection, DamCategory[] categories) {
         for (DamCategory category : categories) {
-            Set<Integer> categoryIds = new HashSet<Integer>();
-            categoryIds = collection.findCategoryIDs(category.name);
+            Set<Integer> categoryIds = collection.findCategoryIDs(category.name);
+            if (categoryIds == null) categoryIds = new HashSet<Integer>();
             CategoryItem categoryItem = null;
-            if (categoryIds == null || categoryIds.size() == 0) {
+            if (categoryIds.size() == 0) {
                 // category does not exist, so create it
                 categoryItem = parentCategory.createCategoryItem(category.name);
                 categoryItem.save();
@@ -2411,7 +2411,7 @@ public class CumulusBean extends DamBean {
                 recordItem.setCategoriesValue(cfv);
                 recordItem.save();
             }
-            if (category.subCategories != null || category.subCategories.length > 0) {
+            if (category.subCategories != null && category.subCategories.length > 0) {
                 processCategories(recordItem, categoryItem, collection, category.subCategories);
             }
         }
